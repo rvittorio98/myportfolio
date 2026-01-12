@@ -81,6 +81,14 @@ const USER_TOOLS = [
         thumbnail: "",
         video: "https://vimeo.com/1153289028",
         url: "https://physic-cloth-simulation.vercel.app/"
+    },
+    {
+        id: "bloom-flower-gradient",
+        title: "BLOOM FLOWER GRADIENT",
+        description: "Procedural gradient generator inspired by organic bloom patterns — create and export hypnotic color compositions in real-time",
+        thumbnail: "",
+        video: "https://vimeo.com/1153763989",
+        url: "https://gradient-bloom-flower.vercel.app/"
     }
 ];
 
