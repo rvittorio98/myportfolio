@@ -61,7 +61,7 @@ const USER_TOOLS = [
     {
         id: "maiella-tool",
         title: "MAIELLA TOOL",
-        description: "Tool realizzato per maiella, permette di creare png personalizzati della tua montagna",  // Aggiungi la descrizione qui
+        description: "Interactive tool for Maiella brand — create custom PNG exports of your mountain with real-time 3D controls",
         thumbnail: "",
         video: "https://vimeo.com/1153288940",
         url: "https://maiella-tool.vercel.app/"
@@ -69,18 +69,18 @@ const USER_TOOLS = [
     {
         id: "multiverse-studio",
         title: "MULTIVERSE STUDIO",
-        description: "",  // Aggiungi la descrizione qui
+        description: "Generative visual tool built for Multiverse — experiment with dynamic layouts and export custom compositions",
         thumbnail: "",
         video: "https://vimeo.com/1153288993",
         url: "https://multiverse-studio-tool-01.vercel.app/"
     },
     {
-        id: "tool-3",
-        title: "TOOL 3",
-        description: "",  // Aggiungi la descrizione qui
+        id: "physic-cloth-simulation",
+        title: "PHYSIC CLOTH SIMULATION",
+        description: "Real-time physics engine for cloth simulation — drag, cut, and export fabric interactions with custom images",
         thumbnail: "",
         video: "https://vimeo.com/1153289028",
-        url: "#"
+        url: "https://physic-cloth-simulation.vercel.app/"
     }
 ];
 
