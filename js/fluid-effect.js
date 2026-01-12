@@ -9,13 +9,13 @@ const isFirefox = navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
 const isSlowBrowser = isSafari || isFirefox;
 
 // --- CONFIGURAZIONE GLOBALE ---
-// Ridurre complessità mesh su Safari/Firefox per evitare stuttering
+// Ridurre MOLTO la complessità mesh su Safari/Firefox per evitare stuttering
 const LIQUID_SETTINGS = {
-    // Risoluzione Griglia - ridotta su Safari/Firefox per performance
-    cols: isSlowBrowser ? 8 : 12,
-    rows: isSlowBrowser ? 8 : 12,
+    // Risoluzione Griglia - MOLTO ridotta su Safari/Firefox (5x5 = 32 triangoli vs 12x12 = 242)
+    cols: isSlowBrowser ? 5 : 12,
+    rows: isSlowBrowser ? 5 : 12,
 
-    // Fisica
+    // Fisica - meno iterazioni su slow browsers
     friction: 0.32,
     returnForce: 0.05,
     mouseRadius: 140,
@@ -23,7 +23,10 @@ const LIQUID_SETTINGS = {
     stiffness: 1,
 
     // Rendering (overlap maggiore elimina le cuciture tra triangoli)
-    overlap: 1.06
+    overlap: 1.06,
+
+    // Frame skipping per slow browsers (1 = ogni frame, 2 = ogni 2 frame = 30fps)
+    frameSkip: isSlowBrowser ? 2 : 1
 };
 
 // Lista istanze
@@ -67,6 +70,7 @@ class LiquidItem {
         this.isHovering = false;
         this.isVideoReady = false;
         this.rafId = null;
+        this.frameCount = 0; // Frame counter for frame skipping
 
         // Mouse fuori
         this.mx = -10000;
@@ -493,8 +497,15 @@ class LiquidItem {
             return;
         }
 
-        this.update();
-        this.draw();
+        // Frame skipping for slow browsers (30fps instead of 60fps)
+        this.frameCount++;
+        const shouldRender = (this.frameCount % LIQUID_SETTINGS.frameSkip) === 0;
+
+        if (shouldRender) {
+            this.update();
+            this.draw();
+        }
+
         this.rafId = requestAnimationFrame(() => this.loop());
     }
 
