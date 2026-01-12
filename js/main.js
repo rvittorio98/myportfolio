@@ -514,6 +514,9 @@ function setupScrollHeader() {
 }
 
 // ========== VIDEO HOVER ==========
+// Safari fix: detect Safari for special handling
+const isSafariMain = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
 function setupVideoHover() {
     const allCards = document.querySelectorAll('.project-card, .tool-card');
 
@@ -521,7 +524,15 @@ function setupVideoHover() {
         const video = card.querySelector('video');
         if (video && !card.dataset.hoverSetup) {
             card.dataset.hoverSetup = 'true';
-            card.addEventListener('mouseenter', () => video.play().catch(() => { }));
+
+            card.addEventListener('mouseenter', () => {
+                // Safari fix: ensure video is loaded before playing
+                if (isSafariMain && video.readyState < 3) {
+                    video.load();
+                }
+                video.play().catch(() => { });
+            });
+
             card.addEventListener('mouseleave', () => {
                 video.pause();
                 video.currentTime = 0;

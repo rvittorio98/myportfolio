@@ -1,20 +1,26 @@
 /* ============================================
    LIQUID MESH EFFECT - OPTIMIZED
-   Performance-focused version
+   Performance-focused version with Safari/Firefox fixes
    ============================================ */
 
+// --- BROWSER DETECTION ---
+const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+const isFirefox = navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
+const isSlowBrowser = isSafari || isFirefox;
+
 // --- CONFIGURAZIONE GLOBALE ---
+// Ridurre complessità mesh su Safari/Firefox per evitare stuttering
 const LIQUID_SETTINGS = {
-    // Risoluzione Griglia (ridotta per performance)
-    cols: 12,
-    rows: 12,
+    // Risoluzione Griglia - ridotta su Safari/Firefox per performance
+    cols: isSlowBrowser ? 8 : 12,
+    rows: isSlowBrowser ? 8 : 12,
 
     // Fisica
     friction: 0.32,
     returnForce: 0.05,
     mouseRadius: 140,
     mouseStrength: 28.0,
-    stiffness: 1, // Ridotto da 2
+    stiffness: 1,
 
     // Rendering (overlap maggiore elimina le cuciture tra triangoli)
     overlap: 1.06
@@ -75,7 +81,11 @@ class LiquidItem {
         this.video.muted = true;
         this.video.loop = true;
         this.video.playsInline = true;
-        this.video.preload = 'metadata';
+        // Safari fix: use 'auto' preload for better video readiness
+        this.video.preload = isSafari ? 'auto' : 'metadata';
+        // Safari fix: ensure muted attribute is set (required for autoplay)
+        this.video.setAttribute('muted', '');
+        this.video.setAttribute('playsinline', '');
 
         // Inizializza dati mesh
         this.initData();
@@ -107,9 +117,17 @@ class LiquidItem {
             }
         }
 
-        this.video.addEventListener('loadedmetadata', () => {
+        // Safari fix: use canplaythrough for more reliable video readiness
+        this.video.addEventListener('canplaythrough', () => {
             this.isVideoReady = true;
             this.recalculateUVs('video');
+        }, { once: true });
+
+        // Fallback: loadedmetadata for browsers where canplaythrough doesn't fire
+        this.video.addEventListener('loadedmetadata', () => {
+            if (!this.isVideoReady) {
+                this.recalculateUVs('video');
+            }
         });
 
         if (videoSrc) this.video.src = videoSrc;
@@ -224,6 +242,16 @@ class LiquidItem {
             this.isHovering = true;
             if (this.isVideoReady) {
                 this.video.currentTime = 0;
+                // Safari fix: load() before play() to ensure video is ready
+                if (isSafari && this.video.readyState < 3) {
+                    this.video.load();
+                    this.video.play().catch(() => { });
+                } else {
+                    this.video.play().catch(() => { });
+                }
+            } else if (this.video.src) {
+                // Video not ready yet - try to load and play anyway
+                this.video.load();
                 this.video.play().catch(() => { });
             }
             this.wakeUp();
@@ -408,6 +436,12 @@ class LiquidItem {
         const oy2 = cy + (y2 - cy) * s;
 
         ctx.save();
+
+        // Safari/Firefox fix: disable image smoothing for better performance
+        if (isSlowBrowser) {
+            ctx.imageSmoothingEnabled = false;
+        }
+
         ctx.beginPath();
         ctx.moveTo(ox0, oy0);
         ctx.lineTo(ox1, oy1);
@@ -427,12 +461,22 @@ class LiquidItem {
             const dx1 = x1 - x0, dy1 = y1 - y0;
             const dx2 = x2 - x0, dy2 = y2 - y0;
 
-            const a = (dx1 * dV2 - dx2 * dV1) * idet;
-            const b = (dy1 * dV2 - dy2 * dV1) * idet;
-            const c = (dx2 * dU1 - dx1 * dU2) * idet;
-            const d = (dy2 * dU1 - dy1 * dU2) * idet;
-            const e = x0 - a * u0 - c * v0;
-            const f = y0 - b * u0 - d * v0;
+            let a = (dx1 * dV2 - dx2 * dV1) * idet;
+            let b = (dy1 * dV2 - dy2 * dV1) * idet;
+            let c = (dx2 * dU1 - dx1 * dU2) * idet;
+            let d = (dy2 * dU1 - dy1 * dU2) * idet;
+            let e = x0 - a * u0 - c * v0;
+            let f = y0 - b * u0 - d * v0;
+
+            // Safari fix: round transform values to avoid sub-pixel precision issues
+            if (isSafari) {
+                a = Math.round(a * 100) / 100;
+                b = Math.round(b * 100) / 100;
+                c = Math.round(c * 100) / 100;
+                d = Math.round(d * 100) / 100;
+                e = Math.round(e * 10) / 10;
+                f = Math.round(f * 10) / 10;
+            }
 
             ctx.transform(a, b, c, d, e, f);
             ctx.drawImage(src, 0, 0);
