@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact | Russo Vittorio</title>
+    <meta name="description" content="Contact Russo Vittorio - Creative Technologist & Motion Designer">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <a href="../index.html" class="header__logo">RUSSO VITTORIO</a>
+
+        <div class="header__toggle">
+            <a href="../index.html" class="toggle__label toggle__label--project active">PROJECT</a>
+            <a href="../index.html?view=tool" class="toggle__switch" aria-label="Switch view">
+                <span class="toggle__slider"></span>
+            </a>
+            <a href="../index.html?view=tool" class="toggle__label toggle__label--tool">TOOL</a>
+        </div>
+
+        <span class="header__title">CREATIVE TECHNOLOGIST &amp; MOTION DESIGNER</span>
+    </header>
+
+    <!-- Contact Content -->
+    <main class="page">
+        <div class="page__header">
+            <h1 class="page__title">CONTACT</h1>
+            <a href="mailto:rvittorio98@gmail.com" class="page__subtitle" id="getInTouch"
+                style="text-decoration: none; cursor: pointer;">GET IN TOUCH</a>
+        </div>
+
+        <div class="page__content">
+            <section class="page__section contact__list">
+                <div class="contact__item">
+                    <p class="contact__label">EMAIL</p>
+                    <a href="#" class="contact__value" id="contactEmail">
+                        <!-- Will be filled by JavaScript -->
+                    </a>
+                </div>
+            </section>
+
+            <section class="page__section">
+                <h2 class="page__section-title">SOCIAL</h2>
+                <div class="contact__social" id="contactSocial">
+                    <!-- Will be filled by JavaScript -->
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <a href="privacy.html" class="footer__link">PRIVACY POLICY</a>
+        <div class="footer__right">
+            <a href="about.html" class="footer__link">ABOUT ME</a>
+            <span class="footer__separator">/</span>
+            <a href="contact.html" class="footer__link">CONTACT</a>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="../js/data.js"></script>
+    <script src="../js/cursor.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            renderContactPage();
+        });
+
+        function renderContactPage() {
+            // Email
+            const emailEl = document.getElementById('contactEmail');
+            if (emailEl && SOCIAL_LINKS.email) {
+                emailEl.textContent = SOCIAL_LINKS.email;
+                emailEl.href = `mailto:${SOCIAL_LINKS.email}`;
+            }
+
+            // Social links
+            const socialEl = document.getElementById('contactSocial');
+            if (socialEl && SOCIAL_LINKS) {
+                const socialLinks = [];
+
+                if (SOCIAL_LINKS.instagram) {
+                    socialLinks.push(`<a href="${SOCIAL_LINKS.instagram}" target="_blank" rel="noopener noreferrer" class="contact__social-link">INSTAGRAM</a>`);
+                }
+                if (SOCIAL_LINKS.linkedin) {
+                    socialLinks.push(`<a href="${SOCIAL_LINKS.linkedin}" target="_blank" rel="noopener noreferrer" class="contact__social-link">LINKEDIN</a>`);
+                }
+                if (SOCIAL_LINKS.github) {
+                    socialLinks.push(`<a href="${SOCIAL_LINKS.github}" target="_blank" rel="noopener noreferrer" class="contact__social-link">GITHUB</a>`);
+                }
+
+                socialEl.innerHTML = socialLinks.join('');
+            }
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Russo Vittorio | Creative Technologist & Motion Designer</title>
+    <meta name="description"
+        content="Portfolio di Russo Vittorio - Creative Technologist & Motion Designer specializzato in Blender, Cinema 4D, After Effect e Touch Designer">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <a href="index.html" class="header__logo">RUSSO VITTORIO</a>
+
+        <div class="header__toggle">
+            <span class="toggle__label toggle__label--project active" data-view="project">PROJECT</span>
+            <button class="toggle__switch" id="viewToggle" aria-label="Switch view">
+                <span class="toggle__slider"></span>
+            </button>
+            <span class="toggle__label toggle__label--tool" data-view="tool">TOOL</span>
+        </div>
+
+        <span class="header__title">CREATIVE TECHNOLOGIST & MOTION DESIGNER</span>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        <!-- Project View (Horizontal Infinite Scroll) -->
+        <section class="gallery-wrapper projects-grid" id="projectView">
+            <div class="gallery-scroll" id="projectScroll">
+                <div class="gallery-track" id="projectTrack">
+                    <!-- Projects will be injected here by JavaScript -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Tools Notice (shown only with TOOL view via JS) -->
+        <p class="tools-notice hidden" id="toolsNotice">For the best experience, open tools on desktop</p>
+
+        <!-- Tool View (Horizontal Infinite Scroll) -->
+        <section class="gallery-wrapper tools-grid hidden" id="toolView">
+            <div class="gallery-scroll" id="toolScroll">
+                <div class="gallery-track" id="toolTrack">
+                    <!-- Tools will be injected here by JavaScript -->
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <a href="pages/privacy.html" class="footer__link">PRIVACY POLICY</a>
+        <div class="footer__right">
+            <a href="pages/about.html" class="footer__link">ABOUT ME</a>
+            <span class="footer__separator">/</span>
+            <a href="pages/contact.html" class="footer__link">CONTACT</a>
+        </div>
+    </footer>
+
+    <script src="js/data.js"></script>
+    <script src="js/fluid-effect.js"></script>
+    <script src="js/cursor.js"></script>
+    <script src="js/main.js"></script>
+</body>
+
+</html>

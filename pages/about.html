@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Me | Russo Vittorio</title>
+    <meta name="description" content="About Russo Vittorio - Creative Technologist & Motion Designer">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <a href="../index.html" class="header__logo">RUSSO VITTORIO</a>
+
+        <div class="header__toggle">
+            <a href="../index.html" class="toggle__label toggle__label--project active">PROJECT</a>
+            <a href="../index.html?view=tool" class="toggle__switch" aria-label="Switch view">
+                <span class="toggle__slider"></span>
+            </a>
+            <a href="../index.html?view=tool" class="toggle__label toggle__label--tool">TOOL</a>
+        </div>
+
+        <span class="header__title">CREATIVE TECHNOLOGIST &amp; MOTION DESIGNER</span>
+    </header>
+
+    <!-- About Content -->
+    <main class="page" id="aboutPage">
+        <div class="page__header">
+            <h1 class="page__title">ABOUT ME</h1>
+        </div>
+
+        <div class="page__content">
+            <section class="page__section">
+                <h2 class="page__section-title">BIO</h2>
+                <p class="page__text" id="aboutBio">
+                    <!-- Will be filled by JavaScript -->
+                </p>
+            </section>
+
+            <section class="page__section">
+                <h2 class="page__section-title">SKILLS</h2>
+                <div id="aboutSkills">
+                    <!-- Will be filled by JavaScript -->
+                </div>
+            </section>
+
+            <section class="page__section">
+                <h2 class="page__section-title">EXPERIENCE</h2>
+                <div id="aboutExperience">
+                    <!-- Will be filled by JavaScript -->
+                </div>
+            </section>
+
+            <section class="page__section">
+                <h2 class="page__section-title">SOFTWARE</h2>
+                <div id="aboutSoftware">
+                    <!-- Will be filled by JavaScript -->
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <a href="privacy.html" class="footer__link">PRIVACY POLICY</a>
+        <div class="footer__right">
+            <a href="about.html" class="footer__link">ABOUT ME</a>
+            <span class="footer__separator">/</span>
+            <a href="contact.html" class="footer__link">CONTACT</a>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="../js/data.js"></script>
+    <script src="../js/cursor.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            renderAboutPage();
+        });
+
+        function renderAboutPage() {
+            // Bio
+            const bioEl = document.getElementById('aboutBio');
+            if (bioEl && ABOUT_INFO.bio) {
+                bioEl.innerHTML = ABOUT_INFO.bio.replace(/\n\n/g, '</p><p class="page__text">');
+            }
+
+            // Skills
+            const skillsEl = document.getElementById('aboutSkills');
+            if (skillsEl && ABOUT_INFO.skills) {
+                skillsEl.innerHTML = ABOUT_INFO.skills.map(skill =>
+                    `<p class="page__text">${skill}</p>`
+                ).join('');
+            }
+
+            // Experience
+            const expEl = document.getElementById('aboutExperience');
+            if (expEl && ABOUT_INFO.experience) {
+                expEl.innerHTML = ABOUT_INFO.experience.map(exp => `
+                    <div style="margin-bottom: var(--spacing-md);">
+                        <p class="page__text" style="margin-bottom: 4px;"><strong>${exp.role}</strong></p>
+                        <p class="page__text" style="color: var(--color-text-secondary); margin-bottom: 4px;">${exp.company}</p>
+                        <p class="page__text" style="color: var(--color-text-secondary);">${exp.period}</p>
+                    </div>
+                `).join('');
+            }
+
+            // Software
+            const softwareEl = document.getElementById('aboutSoftware');
+            if (softwareEl && SOFTWARE) {
+                const softwareList = Object.values(SOFTWARE).map(sw =>
+                    `<a href="${sw.url}" target="_blank" rel="noopener noreferrer" class="page__text" style="display: block; margin-bottom: 8px;">${sw.name}</a>`
+                ).join('');
+                softwareEl.innerHTML = softwareList;
+            }
+        }
+    </script>
+</body>
+
+</html>

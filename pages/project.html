@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project | Russo Vittorio</title>
+    <meta name="description" content="Project details - Russo Vittorio Portfolio">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <a href="../index.html" class="header__logo">RUSSO VITTORIO</a>
+
+        <div class="header__toggle">
+            <a href="../index.html" class="toggle__label toggle__label--project active">PROJECT</a>
+            <a href="../index.html?view=tool" class="toggle__switch" aria-label="Switch view">
+                <span class="toggle__slider"></span>
+            </a>
+            <a href="../index.html?view=tool" class="toggle__label toggle__label--tool">TOOL</a>
+        </div>
+
+        <span class="header__title">CREATIVE TECHNOLOGIST &amp; MOTION DESIGNER</span>
+    </header>
+
+    <!-- Project Detail Content -->
+    <main class="project-detail" id="projectDetail">
+        <!-- Content will be injected by JavaScript -->
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <a href="privacy.html" class="footer__link">PRIVACY POLICY</a>
+        <div class="footer__right">
+            <a href="about.html" class="footer__link">ABOUT ME</a>
+            <span class="footer__separator">/</span>
+            <a href="contact.html" class="footer__link">CONTACT</a>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="../js/data.js"></script>
+    <script src="../js/cursor.js"></script>
+    <script src="../js/main.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            renderProjectDetail();
+        });
+
+        function renderProjectDetail() {
+            const container = document.getElementById('projectDetail');
+            const projectSlug = getUrlParam('id');
+
+            if (!projectSlug) {
+                window.location.href = '../index.html';
+                return;
+            }
+
+            const project = getProjectBySlug(projectSlug);
+
+            if (!project) {
+                window.location.href = '../index.html';
+                return;
+            }
+
+            // Update page title
+            document.title = `${project.title} | Russo Vittorio`;
+
+            // Generate tools HTML
+            const toolsHtml = project.tools.map(toolKey => {
+                const software = SOFTWARE[toolKey];
+                if (!software) return '';
+                return `<a href="${software.url}" target="_blank" rel="noopener noreferrer" class="project-detail__tool">${software.name}</a>`;
+            }).join('');
+
+            // Helper function to generate media HTML
+            const generateMediaHtml = (src, index, extraClass = '') => {
+                const className = `project-detail__gallery-item ${extraClass}`.trim();
+
+                // Check if it's a Vimeo URL
+                const vimeoMatch = src.match(/(?:vimeo\.com\/|player\.vimeo\.com\/video\/)(\d+)/);
+                if (vimeoMatch) {
+                    const vimeoId = vimeoMatch[1];
+                    const containerId = `vimeo-${vimeoId}-${index}`;
+
+                    // Fetch video dimensions and set aspect ratio dynamically
+                    setTimeout(() => {
+                        fetch(`https://vimeo.com/api/oembed.json?url=https://vimeo.com/${vimeoId}`)
+                            .then(res => res.json())
+                            .then(data => {
+                                const container = document.getElementById(containerId);
+                                if (container && data.width && data.height) {
+                                    container.style.aspectRatio = `${data.width}/${data.height}`;
+                                }
+                            })
+                            .catch(() => {
+                                // Fallback: keep default aspect ratio
+                            });
+                    }, 100);
+
+                    return `
+                        <div id="${containerId}" class="${className} project-detail__gallery-item--video">
+                            <iframe src="https://player.vimeo.com/video/${vimeoId}?autoplay=1&loop=1&muted=1&background=1" 
+                                    frameborder="0" 
+                                    allow="autoplay; fullscreen; picture-in-picture">
+                            </iframe>
+                        </div>`;
+                }
+
+                // Check if it's a local video file
+                const isVideo = /\.(mp4|webm|mov)$/i.test(src);
+                if (isVideo) {
+                    return `
+                        <div class="${className}">
+                            <video src="../${src}" autoplay muted loop playsinline></video>
+                        </div>`;
+                }
+
+                // Default: image
+                return `
+                    <div class="${className}">
+                        <img src="../${src}" alt="${project.title} - Image ${index + 1}" loading="lazy">
+                    </div>`;
+            };
+
+            // Generate gallery HTML with support for left, right, and full-width items
+            let galleryHtml = '';
+            const gallery = project.gallery || [];
+
+            if (gallery.length > 0) {
+                // Separate items by position
+                const leftItems = gallery.filter(item => item.position === 'left');
+                const rightItems = gallery.filter(item => item.position === 'right');
+                const fullItems = gallery.filter(item => item.position === 'full');
+
+                // Build two-column section
+                const maxColumnItems = Math.max(leftItems.length, rightItems.length);
+                let columnsHtml = '';
+
+                if (maxColumnItems > 0) {
+                    const leftHtml = leftItems.map((item, i) => generateMediaHtml(item.src, i)).join('');
+                    const rightHtml = rightItems.map((item, i) => generateMediaHtml(item.src, i)).join('');
+
+                    columnsHtml = `
+                        <div class="project-detail__gallery-columns">
+                            <div class="project-detail__gallery-column">
+                                ${leftHtml}
+                            </div>
+                            <div class="project-detail__gallery-column">
+                                ${rightHtml}
+                            </div>
+                        </div>`;
+                }
+
+                // Build full-width section
+                const fullHtml = fullItems.map((item, i) =>
+                    generateMediaHtml(item.src, i, 'project-detail__gallery-item--full')
+                ).join('');
+
+                galleryHtml = columnsHtml + fullHtml;
+            }
+
+            // Navigation
+            const prevProject = getPrevProject(projectSlug);
+            const nextProject = getNextProject(projectSlug);
+
+            const prevLink = prevProject
+                ? `<a href="project.html?id=${prevProject.slug}" class="project-detail__nav-link">← ${prevProject.title}</a>`
+                : `<span class="project-detail__nav-link project-detail__nav-link--disabled">← PREVIOUS</span>`;
+
+            const nextLink = nextProject
+                ? `<a href="project.html?id=${nextProject.slug}" class="project-detail__nav-link">${nextProject.title} →</a>`
+                : `<span class="project-detail__nav-link project-detail__nav-link--disabled">NEXT →</span>`;
+
+            // Generate hero media (supports Vimeo, local video, or image)
+            const heroSrc = project.heroVideo || project.video;
+            let heroHtml = '';
+
+            if (heroSrc) {
+                const vimeoMatch = heroSrc.match(/(?:vimeo\.com\/|player\.vimeo\.com\/video\/)(\d+)/);
+                if (vimeoMatch) {
+                    const vimeoId = vimeoMatch[1];
+                    heroHtml = `
+                        <iframe src="https://player.vimeo.com/video/${vimeoId}?autoplay=1&loop=1&muted=1&background=1" 
+                                frameborder="0" 
+                                allow="autoplay; fullscreen; picture-in-picture">
+                        </iframe>`;
+                } else {
+                    heroHtml = `<video src="../${heroSrc}" autoplay muted loop playsinline preload="auto"></video>`;
+                }
+            } else if (project.thumbnail) {
+                heroHtml = `<img src="../${project.thumbnail}" alt="${project.title}">`;
+            } else {
+                heroHtml = `<div style="background-color: var(--color-placeholder); width: 100%; height: 100%;"></div>`;
+            }
+
+            container.innerHTML = `
+                <a href="../index.html" class="project-detail__back">← BACK</a>
+                
+                <div class="project-detail__hero">
+                    ${heroHtml}
+                </div>
+                
+                <div class="project-detail__header">
+                    <h1 class="project-detail__title">${project.title}</h1>
+                    <div class="project-detail__meta">
+                        <p class="project-detail__made-with">MADE WITH</p>
+                        <div class="project-detail__tools">
+                            ${toolsHtml}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="project-detail__description">
+                    <p class="project-detail__text">${project.description}</p>
+                </div>
+                
+                <div class="project-detail__gallery">
+                    ${galleryHtml}
+                </div>
+                
+                <nav class="project-detail__nav">
+                    ${prevLink}
+                    ${nextLink}
+                </nav>
+            `;
+        }
+    </script>
+</body>
+
+</html>
