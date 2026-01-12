@@ -3,6 +3,10 @@
    High-performance GPU-accelerated rendering
    ============================================ */
 
+// --- BROWSER DETECTION ---
+const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+const isFirefox = navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
+
 // --- CONFIGURAZIONE GLOBALE ---
 const LIQUID_SETTINGS = {
     // Risoluzione Griglia - 12x12 per tutti (WebGL è veloce)
@@ -24,23 +28,23 @@ const LIQUID_SETTINGS = {
 const liquidInstances = [];
 
 // --- SHADERS GLSL ---
+// Use highp precision for Safari compatibility
 const VERTEX_SHADER_SOURCE = `
+    precision highp float;
     attribute vec2 a_position;
     attribute vec2 a_texCoord;
     varying vec2 v_texCoord;
     uniform vec2 u_resolution;
 
     void main() {
-        // Convert from pixels to clip space (-1 to 1)
         vec2 clipSpace = (a_position / u_resolution) * 2.0 - 1.0;
-        // Flip Y axis
         gl_Position = vec4(clipSpace.x, -clipSpace.y, 0.0, 1.0);
         v_texCoord = a_texCoord;
     }
 `;
 
 const FRAGMENT_SHADER_SOURCE = `
-    precision mediump float;
+    precision highp float;
     uniform sampler2D u_texture;
     varying vec2 v_texCoord;
 
@@ -115,11 +119,17 @@ class LiquidItem {
         this.container.appendChild(this.canvas);
 
         // Try WebGL, fallback to 2D if not available
+        // CRITICAL: powerPreference 'high-performance' forces dedicated GPU on Safari/Firefox
+        // desynchronized: true reduces input latency
         this.gl = this.canvas.getContext('webgl', {
             alpha: true,
             premultipliedAlpha: false,
             antialias: false,
-            preserveDrawingBuffer: false
+            preserveDrawingBuffer: false,
+            powerPreference: 'high-performance',  // Force dedicated GPU
+            desynchronized: true,                  // Lower latency
+            depth: false,                          // Not needed - 2D
+            stencil: false                         // Not needed
         });
 
         if (!this.gl) {
