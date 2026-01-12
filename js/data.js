@@ -169,7 +169,7 @@ const PROJECTS = [
         tools: ["nano banana", "veo3", "aftereffect"],
         thumbnail: "images/ai_image/ai_01.png",
         video: "videos/ai_video/ai_01.mp4",
-        heroVideo: "videos/ai_generation/ai_01.mp4",
+        heroVideo: "https://vimeo.com/1153558549",
         gallery: [
             { src: "videos/ai_video/ai_01.mp4", position: "left" },
             { src: "videos/ai_video/ai_2.mp4", position: "right" },
