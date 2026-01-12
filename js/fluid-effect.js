@@ -1,82 +1,136 @@
 /* ============================================
-   LIQUID MESH EFFECT - OPTIMIZED
-   Performance-focused version with Safari/Firefox fixes
+   LIQUID MESH EFFECT - WebGL VERSION
+   High-performance GPU-accelerated rendering
    ============================================ */
 
-// --- BROWSER DETECTION ---
-const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-const isFirefox = navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
-const isSlowBrowser = isSafari || isFirefox;
-
 // --- CONFIGURAZIONE GLOBALE ---
-// Ridurre MOLTO la complessità mesh su Safari/Firefox per evitare stuttering
 const LIQUID_SETTINGS = {
-    // Risoluzione Griglia - MOLTO ridotta su Safari/Firefox (5x5 = 32 triangoli vs 12x12 = 242)
-    cols: isSlowBrowser ? 5 : 12,
-    rows: isSlowBrowser ? 5 : 12,
+    // Risoluzione Griglia - 12x12 per tutti (WebGL è veloce)
+    cols: 12,
+    rows: 12,
 
-    // Fisica - meno iterazioni su slow browsers
+    // Fisica
     friction: 0.32,
     returnForce: 0.05,
     mouseRadius: 140,
     mouseStrength: 28.0,
     stiffness: 1,
 
-    // Rendering (overlap maggiore elimina le cuciture tra triangoli)
-    overlap: 1.06,
-
-    // Frame skipping per slow browsers (1 = ogni frame, 2 = ogni 2 frame = 30fps)
-    frameSkip: isSlowBrowser ? 2 : 1
+    // Rendering
+    overlap: 1.06
 };
 
 // Lista istanze
 const liquidInstances = [];
 
-// --- CLASSE LIQUID ITEM (OTTIMIZZATA) ---
+// --- SHADERS GLSL ---
+const VERTEX_SHADER_SOURCE = `
+    attribute vec2 a_position;
+    attribute vec2 a_texCoord;
+    varying vec2 v_texCoord;
+    uniform vec2 u_resolution;
+
+    void main() {
+        // Convert from pixels to clip space (-1 to 1)
+        vec2 clipSpace = (a_position / u_resolution) * 2.0 - 1.0;
+        // Flip Y axis
+        gl_Position = vec4(clipSpace.x, -clipSpace.y, 0.0, 1.0);
+        v_texCoord = a_texCoord;
+    }
+`;
+
+const FRAGMENT_SHADER_SOURCE = `
+    precision mediump float;
+    uniform sampler2D u_texture;
+    varying vec2 v_texCoord;
+
+    void main() {
+        gl_FragColor = texture2D(u_texture, v_texCoord);
+    }
+`;
+
+// --- HELPER FUNCTIONS ---
+function createShader(gl, type, source) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+        gl.deleteShader(shader);
+        return null;
+    }
+    return shader;
+}
+
+function createProgram(gl, vertexShader, fragmentShader) {
+    const program = gl.createProgram();
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error('Program link error:', gl.getProgramInfoLog(program));
+        gl.deleteProgram(program);
+        return null;
+    }
+    return program;
+}
+
+// --- CLASSE LIQUID ITEM (WebGL) ---
 class LiquidItem {
     constructor(container, imgSrc, videoSrc) {
         this.container = container;
+        this.useWebGL = true;
 
-        // Elementi originali - li usiamo come fallback finché il canvas non è pronto
+        // Elementi originali
         this.originalImg = container.querySelector('img');
         this.originalVideo = container.querySelector('video');
         this.placeholder = container.querySelector('.project-card__placeholder, .tool-card__placeholder');
 
-        // Flag per stato caricamento
+        // Flag
         this.isImageLoaded = false;
         this.canvasReady = false;
-
-        // Setup dimensioni PRIMA di creare il canvas
-        const rect = this.container.getBoundingClientRect();
-        this.width = rect.width;
-        this.height = rect.height;
-
-        // Crea canvas - alpha: true per trasparenza sfondo
-        this.canvas = document.createElement('canvas');
-        this.canvas.className = 'liquid-canvas';
-        this.canvas.width = this.width;
-        this.canvas.height = this.height;
-        // Inizia invisibile, mostreremo solo quando pronto
-        this.canvas.style.opacity = '0';
-        this.ctx = this.canvas.getContext('2d', {
-            alpha: true,
-            willReadFrequently: false
-        });
-        this.container.appendChild(this.canvas);
-
-        // Stato
-        this.isVisible = true; // Assumiamo visibile inizialmente
+        this.isVisible = true;
         this.isSleeping = true;
         this.isHovering = false;
         this.isVideoReady = false;
         this.rafId = null;
-        this.frameCount = 0; // Frame counter for frame skipping
 
-        // Mouse fuori
+        // Mouse
         this.mx = -10000;
         this.my = -10000;
 
-        // Media - Crea nuovi elementi
+        // Dimensioni
+        const rect = this.container.getBoundingClientRect();
+        this.width = rect.width;
+        this.height = rect.height;
+
+        // Canvas
+        this.canvas = document.createElement('canvas');
+        this.canvas.className = 'liquid-canvas';
+        this.canvas.width = this.width;
+        this.canvas.height = this.height;
+        this.canvas.style.opacity = '0';
+        this.container.appendChild(this.canvas);
+
+        // Try WebGL, fallback to 2D if not available
+        this.gl = this.canvas.getContext('webgl', {
+            alpha: true,
+            premultipliedAlpha: false,
+            antialias: false,
+            preserveDrawingBuffer: false
+        });
+
+        if (!this.gl) {
+            console.warn('WebGL not available, falling back to 2D');
+            this.useWebGL = false;
+            this.ctx = this.canvas.getContext('2d');
+        } else {
+            this.initWebGL();
+        }
+
+        // Media
         this.img = new Image();
         this.img.crossOrigin = "Anonymous";
 
@@ -85,24 +139,25 @@ class LiquidItem {
         this.video.muted = true;
         this.video.loop = true;
         this.video.playsInline = true;
-        // Safari fix: use 'auto' preload for better video readiness
-        this.video.preload = isSafari ? 'auto' : 'metadata';
-        // Safari fix: ensure muted attribute is set (required for autoplay)
+        this.video.preload = 'auto';
         this.video.setAttribute('muted', '');
         this.video.setAttribute('playsinline', '');
 
-        // Inizializza dati mesh
+        // Init mesh data
         this.initData();
         this.initEvents();
 
-        // Callback per quando l'immagine è pronta
+        // Image loading
         const onImageReady = () => {
-            if (this.isImageLoaded) return; // Previeni doppia esecuzione
+            if (this.isImageLoaded) return;
             this.isImageLoaded = true;
             this.recalculateUVs('image');
-            this.drawStatic(); // Disegna frame statico
 
-            // Ora che abbiamo disegnato, possiamo fare lo switch
+            if (this.useWebGL) {
+                this.createTexture(this.img, 'image');
+            }
+
+            this.drawStatic();
             this.canvas.style.opacity = '1';
             if (this.originalImg) this.originalImg.style.display = 'none';
             if (this.originalVideo) this.originalVideo.style.display = 'none';
@@ -110,24 +165,22 @@ class LiquidItem {
             this.canvasReady = true;
         };
 
-        // Imposta src e gestisci caricamento
         if (imgSrc) {
             this.img.onload = onImageReady;
             this.img.src = imgSrc;
-
-            // Se l'immagine è già in cache, onload potrebbe non scattare
             if (this.img.complete && this.img.naturalWidth > 0) {
                 onImageReady();
             }
         }
 
-        // Safari fix: use canplaythrough for more reliable video readiness
         this.video.addEventListener('canplaythrough', () => {
             this.isVideoReady = true;
             this.recalculateUVs('video');
+            if (this.useWebGL) {
+                this.createTexture(this.video, 'video');
+            }
         }, { once: true });
 
-        // Fallback: loadedmetadata for browsers where canplaythrough doesn't fire
         this.video.addEventListener('loadedmetadata', () => {
             if (!this.isVideoReady) {
                 this.recalculateUVs('video');
@@ -136,8 +189,81 @@ class LiquidItem {
 
         if (videoSrc) this.video.src = videoSrc;
 
-        // Osservatore per visibilità (lazy)
         this.initObserver();
+    }
+
+    initWebGL() {
+        const gl = this.gl;
+
+        // Compile shaders
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE);
+
+        if (!vertexShader || !fragmentShader) {
+            this.useWebGL = false;
+            this.ctx = this.canvas.getContext('2d');
+            return;
+        }
+
+        this.program = createProgram(gl, vertexShader, fragmentShader);
+        if (!this.program) {
+            this.useWebGL = false;
+            this.ctx = this.canvas.getContext('2d');
+            return;
+        }
+
+        // Get locations
+        this.positionLocation = gl.getAttribLocation(this.program, 'a_position');
+        this.texCoordLocation = gl.getAttribLocation(this.program, 'a_texCoord');
+        this.resolutionLocation = gl.getUniformLocation(this.program, 'u_resolution');
+        this.textureLocation = gl.getUniformLocation(this.program, 'u_texture');
+
+        // Create buffers
+        this.positionBuffer = gl.createBuffer();
+        this.texCoordBuffer = gl.createBuffer();
+        this.indexBuffer = gl.createBuffer();
+
+        // Enable blending for transparency
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        // Set viewport
+        gl.viewport(0, 0, this.width, this.height);
+
+        // Textures
+        this.imageTexture = null;
+        this.videoTexture = null;
+    }
+
+    createTexture(source, type) {
+        const gl = this.gl;
+        if (!gl) return;
+
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+
+        // Set texture parameters
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+        // Upload texture
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+
+        if (type === 'image') {
+            this.imageTexture = texture;
+        } else {
+            this.videoTexture = texture;
+        }
+    }
+
+    updateVideoTexture() {
+        const gl = this.gl;
+        if (!gl || !this.videoTexture || this.video.readyState < 2) return;
+
+        gl.bindTexture(gl.TEXTURE_2D, this.videoTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.video);
     }
 
     initData() {
@@ -145,7 +271,7 @@ class LiquidItem {
         const rows = LIQUID_SETTINGS.rows;
         this.count = cols * rows;
 
-        // Array tipizzati per performance
+        // Mesh position arrays
         this.x = new Float32Array(this.count);
         this.y = new Float32Array(this.count);
         this.ox = new Float32Array(this.count);
@@ -153,87 +279,90 @@ class LiquidItem {
         this.hx = new Float32Array(this.count);
         this.hy = new Float32Array(this.count);
 
-        this.tx_img = new Float32Array(this.count);
-        this.ty_img = new Float32Array(this.count);
-        this.tx_vid = new Float32Array(this.count);
-        this.ty_vid = new Float32Array(this.count);
+        // UV arrays (normalized 0-1)
+        this.u = new Float32Array(this.count);
+        this.v = new Float32Array(this.count);
 
-        // Pre-calcola spacing
+        // Pre-compute spacing
         this.spacingX = this.width / (cols - 1);
         this.spacingY = this.height / (rows - 1);
 
         this.resetPositions();
+
+        // Build index buffer for triangles
+        this.buildIndices();
+    }
+
+    buildIndices() {
+        const cols = LIQUID_SETTINGS.cols;
+        const rows = LIQUID_SETTINGS.rows;
+        const triangleCount = (cols - 1) * (rows - 1) * 2;
+        this.indices = new Uint16Array(triangleCount * 3);
+
+        let idx = 0;
+        for (let r = 0; r < rows - 1; r++) {
+            for (let c = 0; c < cols - 1; c++) {
+                const i = r * cols + c;
+                // Triangle 1
+                this.indices[idx++] = i;
+                this.indices[idx++] = i + 1;
+                this.indices[idx++] = i + cols;
+                // Triangle 2
+                this.indices[idx++] = i + 1;
+                this.indices[idx++] = i + cols + 1;
+                this.indices[idx++] = i + cols;
+            }
+        }
+
+        // Upload to GPU if WebGL
+        if (this.gl) {
+            const gl = this.gl;
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.indices, gl.STATIC_DRAW);
+        }
     }
 
     resetPositions() {
         const cols = LIQUID_SETTINGS.cols;
         for (let i = 0; i < this.count; i++) {
             const c = i % cols;
-            const r = (i / cols) | 0; // Bit shift invece di Math.floor
+            const r = (i / cols) | 0;
             const px = c * this.spacingX;
             const py = r * this.spacingY;
             this.x[i] = this.ox[i] = this.hx[i] = px;
             this.y[i] = this.oy[i] = this.hy[i] = py;
+
+            // UVs (normalized 0-1)
+            this.u[i] = c / (cols - 1);
+            this.v[i] = r / (LIQUID_SETTINGS.rows - 1);
         }
     }
 
     recalculateUVs(type) {
-        let srcW, srcH, txArr, tyArr;
+        // For WebGL, we use normalized UVs that are already correct
+        // This is kept for compatibility but WebGL uses different UVs
+        let srcW, srcH;
 
         if (type === 'image') {
             srcW = this.img.naturalWidth || this.img.width;
             srcH = this.img.naturalHeight || this.img.height;
-            txArr = this.tx_img;
-            tyArr = this.ty_img;
         } else {
             srcW = this.video.videoWidth;
             srcH = this.video.videoHeight;
-            txArr = this.tx_vid;
-            tyArr = this.ty_vid;
         }
 
         if (!srcW || !srcH) return;
 
-        const imgRatio = srcW / srcH;
-        const canvasRatio = this.width / this.height;
-        let renderW, renderH, offsetX, offsetY;
-
-        if (canvasRatio > imgRatio) {
-            renderW = srcW;
-            renderH = srcW / canvasRatio;
-            offsetX = 0;
-            offsetY = (srcH - renderH) / 2;
-        } else {
-            renderH = srcH;
-            renderW = srcH * canvasRatio;
-            offsetX = (srcW - renderW) / 2;
-            offsetY = 0;
-        }
-
-        const padding = 2.0;
-        offsetX += padding;
-        offsetY += padding;
-        renderW -= padding * 2;
-        renderH -= padding * 2;
-
-        const cols = LIQUID_SETTINGS.cols;
-        const colsM1 = cols - 1;
-        const rowsM1 = LIQUID_SETTINGS.rows - 1;
-
-        for (let i = 0; i < this.count; i++) {
-            const c = i % cols;
-            const r = (i / cols) | 0;
-            txArr[i] = offsetX + (c / colsM1) * renderW;
-            tyArr[i] = offsetY + (r / rowsM1) * renderH;
-        }
+        // Store aspect ratio for potential use
+        this.srcAspect = srcW / srcH;
+        this.canvasAspect = this.width / this.height;
     }
 
     initEvents() {
-        // Throttled mousemove
         let lastMove = 0;
         this.canvas.addEventListener('mousemove', e => {
             const now = performance.now();
-            if (now - lastMove < 16) return; // ~60fps cap
+            if (now - lastMove < 16) return;
             lastMove = now;
 
             const rect = this.canvas.getBoundingClientRect();
@@ -246,15 +375,8 @@ class LiquidItem {
             this.isHovering = true;
             if (this.isVideoReady) {
                 this.video.currentTime = 0;
-                // Safari fix: load() before play() to ensure video is ready
-                if (isSafari && this.video.readyState < 3) {
-                    this.video.load();
-                    this.video.play().catch(() => { });
-                } else {
-                    this.video.play().catch(() => { });
-                }
+                this.video.play().catch(() => { });
             } else if (this.video.src) {
-                // Video not ready yet - try to load and play anyway
                 this.video.load();
                 this.video.play().catch(() => { });
             }
@@ -334,7 +456,7 @@ class LiquidItem {
             }
         }
 
-        // Constraints (una sola iterazione per performance)
+        // Constraints
         const cols = LIQUID_SETTINGS.cols;
         const rows = LIQUID_SETTINGS.rows;
         const spX = this.spacingX;
@@ -347,7 +469,6 @@ class LiquidItem {
             if (r < rows - 1) this.resolve(i, i + cols, spY);
         }
 
-        // Vai in sleep se movimento minimo e non hover
         if (totalMotion < 0.05 && !this.isHovering) {
             this.isSleeping = true;
         }
@@ -369,123 +490,98 @@ class LiquidItem {
         this.y[i2] += oy;
     }
 
-    // Disegna frame statico (senza fisica)
     drawStatic() {
         if (!this.isImageLoaded) return;
-        this.ctx.clearRect(0, 0, this.width, this.height);
-        this.drawMesh(this.img, this.tx_img, this.ty_img);
+        this.draw();
     }
 
     draw() {
-        let src, tx, ty;
-
-        if (this.isHovering && this.isVideoReady && this.video.readyState >= 2) {
-            src = this.video;
-            tx = this.tx_vid;
-            ty = this.ty_vid;
-        } else if (this.isImageLoaded) {
-            src = this.img;
-            tx = this.tx_img;
-            ty = this.ty_img;
+        if (this.useWebGL) {
+            this.drawWebGL();
         } else {
-            // Fallback placeholder
-            this.ctx.fillStyle = '#C5D92D';
-            this.ctx.fillRect(0, 0, this.width, this.height);
+            this.drawCanvas2D();
+        }
+    }
+
+    drawWebGL() {
+        const gl = this.gl;
+        if (!gl) return;
+
+        // Select texture and update if video
+        let texture;
+        if (this.isHovering && this.isVideoReady && this.video.readyState >= 2) {
+            this.updateVideoTexture();
+            texture = this.videoTexture;
+        } else if (this.imageTexture) {
+            texture = this.imageTexture;
+        } else {
             return;
         }
 
-        this.ctx.clearRect(0, 0, this.width, this.height);
-        this.drawMesh(src, tx, ty);
+        // Clear
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        // Use program
+        gl.useProgram(this.program);
+
+        // Set resolution
+        gl.uniform2f(this.resolutionLocation, this.width, this.height);
+
+        // Build position buffer from current mesh state
+        const positions = new Float32Array(this.count * 2);
+        for (let i = 0; i < this.count; i++) {
+            positions[i * 2] = this.x[i];
+            positions[i * 2 + 1] = this.y[i];
+        }
+
+        // Upload positions
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(this.positionLocation);
+        gl.vertexAttribPointer(this.positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+        // Upload UVs
+        const uvs = new Float32Array(this.count * 2);
+        for (let i = 0; i < this.count; i++) {
+            uvs[i * 2] = this.u[i];
+            uvs[i * 2 + 1] = this.v[i];
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.texCoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(this.texCoordLocation);
+        gl.vertexAttribPointer(this.texCoordLocation, 2, gl.FLOAT, false, 0, 0);
+
+        // Bind texture
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.uniform1i(this.textureLocation, 0);
+
+        // Bind index buffer and draw
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+        gl.drawElements(gl.TRIANGLES, this.indices.length, gl.UNSIGNED_SHORT, 0);
     }
 
-    drawMesh(src, tx, ty) {
-        const cols = LIQUID_SETTINGS.cols;
-        const rows = LIQUID_SETTINGS.rows;
-        const overlap = LIQUID_SETTINGS.overlap;
+    drawCanvas2D() {
+        // Fallback Canvas 2D implementation
         const ctx = this.ctx;
+        if (!ctx) return;
 
-        for (let r = 0; r < rows - 1; r++) {
-            for (let c = 0; c < cols - 1; c++) {
-                const i = r * cols + c;
-
-                // Triangolo 1
-                this.drawTriangle(
-                    i, i + 1, i + cols,
-                    src, tx, ty, overlap, ctx
-                );
-
-                // Triangolo 2
-                this.drawTriangle(
-                    i + 1, i + cols + 1, i + cols,
-                    src, tx, ty, overlap, ctx
-                );
-            }
-        }
-    }
-
-    drawTriangle(i1, i2, i3, src, uArr, vArr, s, ctx) {
-        const x0 = this.x[i1], y0 = this.y[i1];
-        const x1 = this.x[i2], y1 = this.y[i2];
-        const x2 = this.x[i3], y2 = this.y[i3];
-
-        // Centro e overlap
-        const cx = (x0 + x1 + x2) * 0.33333;
-        const cy = (y0 + y1 + y2) * 0.33333;
-
-        const ox0 = cx + (x0 - cx) * s;
-        const oy0 = cy + (y0 - cy) * s;
-        const ox1 = cx + (x1 - cx) * s;
-        const oy1 = cy + (y1 - cy) * s;
-        const ox2 = cx + (x2 - cx) * s;
-        const oy2 = cy + (y2 - cy) * s;
-
-        ctx.save();
-
-        // Safari/Firefox fix: disable image smoothing for better performance
-        if (isSlowBrowser) {
-            ctx.imageSmoothingEnabled = false;
+        let src, tx, ty;
+        if (this.isHovering && this.isVideoReady && this.video.readyState >= 2) {
+            src = this.video;
+        } else if (this.isImageLoaded) {
+            src = this.img;
+        } else {
+            ctx.fillStyle = '#C5D92D';
+            ctx.fillRect(0, 0, this.width, this.height);
+            return;
         }
 
-        ctx.beginPath();
-        ctx.moveTo(ox0, oy0);
-        ctx.lineTo(ox1, oy1);
-        ctx.lineTo(ox2, oy2);
-        ctx.closePath();
-        ctx.clip();
+        ctx.clearRect(0, 0, this.width, this.height);
 
-        const u0 = uArr[i1], v0 = vArr[i1];
-        const dU1 = uArr[i2] - u0;
-        const dV1 = vArr[i2] - v0;
-        const dU2 = uArr[i3] - u0;
-        const dV2 = vArr[i3] - v0;
-        const det = dU1 * dV2 - dU2 * dV1;
-
-        if (det !== 0) {
-            const idet = 1 / det;
-            const dx1 = x1 - x0, dy1 = y1 - y0;
-            const dx2 = x2 - x0, dy2 = y2 - y0;
-
-            let a = (dx1 * dV2 - dx2 * dV1) * idet;
-            let b = (dy1 * dV2 - dy2 * dV1) * idet;
-            let c = (dx2 * dU1 - dx1 * dU2) * idet;
-            let d = (dy2 * dU1 - dy1 * dU2) * idet;
-            let e = x0 - a * u0 - c * v0;
-            let f = y0 - b * u0 - d * v0;
-
-            // Safari fix: round transform values to avoid sub-pixel precision issues
-            if (isSafari) {
-                a = Math.round(a * 100) / 100;
-                b = Math.round(b * 100) / 100;
-                c = Math.round(c * 100) / 100;
-                d = Math.round(d * 100) / 100;
-                e = Math.round(e * 10) / 10;
-                f = Math.round(f * 10) / 10;
-            }
-
-            ctx.transform(a, b, c, d, e, f);
-            ctx.drawImage(src, 0, 0);
-        }
-        ctx.restore();
+        // Simple draw without distortion for fallback
+        ctx.drawImage(src, 0, 0, this.width, this.height);
     }
 
     loop() {
@@ -497,15 +593,8 @@ class LiquidItem {
             return;
         }
 
-        // Frame skipping for slow browsers (30fps instead of 60fps)
-        this.frameCount++;
-        const shouldRender = (this.frameCount % LIQUID_SETTINGS.frameSkip) === 0;
-
-        if (shouldRender) {
-            this.update();
-            this.draw();
-        }
-
+        this.update();
+        this.draw();
         this.rafId = requestAnimationFrame(() => this.loop());
     }
 
@@ -514,27 +603,35 @@ class LiquidItem {
             cancelAnimationFrame(this.rafId);
             this.rafId = null;
         }
+
+        // Cleanup WebGL resources
+        if (this.gl) {
+            const gl = this.gl;
+            if (this.imageTexture) gl.deleteTexture(this.imageTexture);
+            if (this.videoTexture) gl.deleteTexture(this.videoTexture);
+            if (this.program) gl.deleteProgram(this.program);
+            if (this.positionBuffer) gl.deleteBuffer(this.positionBuffer);
+            if (this.texCoordBuffer) gl.deleteBuffer(this.texCoordBuffer);
+            if (this.indexBuffer) gl.deleteBuffer(this.indexBuffer);
+        }
+
         this.canvas?.remove();
     }
 }
 
 // --- INIT ---
-// Lazy initialization observer - shared across all containers
 let lazyFluidObserver = null;
 
 function initFluidEffects() {
-    // Skip fluid effects on mobile devices
     const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
     if (isMobile) return;
 
     const containers = document.querySelectorAll('.project-card__media, .tool-card__media');
 
-    // Create lazy observer if not exists
     if (!lazyFluidObserver) {
         lazyFluidObserver = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
-                    // Use requestIdleCallback or setTimeout to avoid blocking
                     if ('requestIdleCallback' in window) {
                         requestIdleCallback(() => {
                             initSingleFluidEffect(entry.target);
@@ -547,11 +644,10 @@ function initFluidEffects() {
                     lazyFluidObserver.unobserve(entry.target);
                 }
             });
-        }, { rootMargin: '200px' });  // Pre-load 200px before visible
+        }, { rootMargin: '200px' });
     }
 
     containers.forEach(container => {
-        // Skip if already has effect or being observed
         if (container._liquidEffect || container._fluidObserved) return;
         container._fluidObserved = true;
         lazyFluidObserver.observe(container);
