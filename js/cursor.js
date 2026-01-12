@@ -1,7 +1,7 @@
-// ========== CUSTOM CURSOR - OPTIMIZED ==========
-// Performance optimized for Safari/Firefox
-// Uses transform3d (GPU) instead of left/top (CPU reflow)
+// ========== CUSTOM CURSOR - TEMPORARILY DISABLED ==========
+// Disabled for performance testing on Safari/Firefox
 
+/*
 (function () {
     // Only enable on non-touch devices
     if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
@@ -97,3 +97,4 @@
         cursorOutline.classList.remove('cursor--click');
     }, { passive: true });
 })();
+*/
