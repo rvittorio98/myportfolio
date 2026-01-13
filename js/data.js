@@ -89,6 +89,14 @@ const USER_TOOLS = [
         thumbnail: "",
         video: "https://vimeo.com/1153763989",
         url: "https://gradient-bloom-flower.vercel.app/"
+    },
+    {
+        id: "mycelium-mirror",
+        title: "MYCELIUM MIRROR",
+        description: "Generative visual system inspired by fungal networks — watch organic structures grow and branch in real-time, mirroring nature's hidden intelligence",
+        thumbnail: "",
+        video: "https://vimeo.com/1153780687",
+        url: "https://mycelium-mirror.vercel.app/"
     }
 ];
 
