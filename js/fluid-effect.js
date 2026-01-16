@@ -27,6 +27,10 @@ const LIQUID_SETTINGS = {
 // Lista istanze
 const liquidInstances = [];
 
+// WebGL context counter - browsers limit to ~8-16 contexts
+let activeWebGLContexts = 0;
+const MAX_WEBGL_CONTEXTS = 8; // Safe limit for most browsers
+
 // --- SHADERS GLSL ---
 // Use highp precision for Safari compatibility
 const VERTEX_SHADER_SOURCE = `
@@ -136,8 +140,41 @@ class LiquidItem {
             console.warn('WebGL not available, falling back to 2D');
             this.useWebGL = false;
             this.ctx = this.canvas.getContext('2d');
+        } else if (activeWebGLContexts >= MAX_WEBGL_CONTEXTS) {
+            // Too many WebGL contexts, use Canvas 2D fallback
+            console.warn('Max WebGL contexts reached, using 2D fallback');
+            this.useWebGL = false;
+            this.gl = null;
+            this.ctx = this.canvas.getContext('2d');
         } else {
+            activeWebGLContexts++;
             this.initWebGL();
+
+            // Handle context loss
+            this.canvas.addEventListener('webglcontextlost', (e) => {
+                e.preventDefault();
+                console.warn('WebGL context lost, falling back to 2D');
+                this.useWebGL = false;
+                activeWebGLContexts--;
+                this.ctx = this.canvas.getContext('2d');
+                if (this.isImageLoaded) {
+                    this.draw();
+                }
+            });
+
+            this.canvas.addEventListener('webglcontextrestored', () => {
+                console.log('WebGL context restored');
+                activeWebGLContexts++;
+                this.useWebGL = true;
+                this.initWebGL();
+                if (this.isImageLoaded) {
+                    this.createTexture(this.img, 'image');
+                    if (this.isVideoReady) {
+                        this.createTexture(this.video, 'video');
+                    }
+                    this.draw();
+                }
+            });
         }
 
         // Media
