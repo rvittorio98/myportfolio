@@ -386,8 +386,6 @@ class LiquidItem {
     }
 
     recalculateUVs(type) {
-        // For WebGL, we use normalized UVs that are already correct
-        // This is kept for compatibility but WebGL uses different UVs
         let srcW, srcH;
 
         if (type === 'image') {
@@ -400,7 +398,36 @@ class LiquidItem {
 
         if (!srcW || !srcH) return;
 
-        // Store aspect ratio for potential use
+        // Calculate UVs for 'cover' behavior (maintain aspect ratio, fill canvas)
+        const imgRatio = srcW / srcH;
+        const canvasRatio = this.width / this.height;
+
+        let uOffset = 0, vOffset = 0;
+        let uScale = 1, vScale = 1;
+
+        if (canvasRatio > imgRatio) {
+            // Canvas is wider - crop top/bottom of image
+            vScale = imgRatio / canvasRatio;
+            vOffset = (1 - vScale) / 2;
+        } else {
+            // Canvas is taller - crop left/right of image
+            uScale = canvasRatio / imgRatio;
+            uOffset = (1 - uScale) / 2;
+        }
+
+        // Update UVs
+        const cols = LIQUID_SETTINGS.cols;
+        for (let i = 0; i < this.count; i++) {
+            const c = i % cols;
+            const r = (i / cols) | 0;
+            const baseU = c / (cols - 1);
+            const baseV = r / (LIQUID_SETTINGS.rows - 1);
+
+            // Apply cover transformation
+            this.u[i] = uOffset + baseU * uScale;
+            this.v[i] = vOffset + baseV * vScale;
+        }
+
         this.srcAspect = srcW / srcH;
         this.canvasAspect = this.width / this.height;
     }
