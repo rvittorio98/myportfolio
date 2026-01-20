@@ -77,16 +77,14 @@ document.addEventListener('DOMContentLoaded', function () {
     setupScrollHeader();
     setupWheelScroll();
 
-    // Initialize BOTH galleries while dimensions are available
+    // Initialize galleries (simple - no infinite scroll cloning)
     setTimeout(() => {
-        // Initialize projects
-        initSeamlessScroll('projectScroll', 'projectTrack', 'projects');
+        // Mark both views as initialized
         AppState.markInitialized('project');
 
-        // Initialize tools (ensure visible for dimension calculation)
+        // Initialize tools
         if (toolView && !toolView.classList.contains('hidden')) {
             // Tool is already visible (TOOL view)
-            initSeamlessScroll('toolScroll', 'toolTrack', 'tools');
             AppState.markInitialized('tool');
 
             // Now hide project properly
@@ -96,20 +94,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 projectView.classList.add('hidden');
             }
         } else if (toolView) {
-            // PROJECT view - temporarily show tools to initialize
-            toolView.classList.remove('hidden');
-            toolView.style.visibility = 'hidden';
-            toolView.style.position = 'absolute';
-
-            setTimeout(() => {
-                initSeamlessScroll('toolScroll', 'toolTrack', 'tools');
-                AppState.markInitialized('tool');
-
-                // Restore tool view state
-                toolView.style.visibility = '';
-                toolView.style.position = '';
-                toolView.classList.add('hidden');
-            }, 50);
+            // PROJECT view - mark tools as initialized
+            AppState.markInitialized('tool');
         }
 
         setupVideoHover();
@@ -119,6 +105,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }, 100);
 });
+
 
 // ========== VIEW STATE MANAGEMENT ==========
 function applyViewState(view, animate = true) {
@@ -199,15 +186,8 @@ function initializeViewIfNeeded(view) {
     if (AppState.isInitialized(view)) return;
 
     // Use double requestAnimationFrame to ensure DOM is fully rendered
-    // This is critical for getting correct element dimensions after unhiding
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-            if (view === 'tool') {
-                initSeamlessScroll('toolScroll', 'toolTrack', 'tools');
-            } else {
-                initSeamlessScroll('projectScroll', 'projectTrack', 'projects');
-            }
-
             setupVideoHover();
 
             if (typeof initFluidEffects === 'function') {
@@ -338,153 +318,6 @@ function createToolCard(tool, isClone = false) {
     `;
 }
 
-// ========== SEAMLESS INFINITE SCROLL ==========
-function initSeamlessScroll(scrollId, trackId, dataType) {
-    const scrollContainer = document.getElementById(scrollId);
-    const track = document.getElementById(trackId);
-
-    if (!scrollContainer || !track) return;
-
-    const originalItems = Array.from(track.children);
-    const itemCount = originalItems.length;
-
-    if (itemCount === 0) return;
-
-    const dataArray = dataType === 'projects' ? PROJECTS : USER_TOOLS;
-    const gap = 20;
-
-    let singleSetWidth = 0;
-    originalItems.forEach(item => {
-        singleSetWidth += item.offsetWidth + gap;
-    });
-
-    if (singleSetWidth === 0) return;
-
-    const viewportWidth = scrollContainer.clientWidth;
-    const isMobileDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-    // More clone sets on mobile to handle fast momentum scrolling
-    const setsNeeded = Math.ceil(viewportWidth / singleSetWidth) + (isMobileDevice ? 4 : 2);
-
-    // Append clones to the right
-    for (let set = 0; set < setsNeeded; set++) {
-        dataArray.forEach(item => {
-            const cloneHtml = dataType === 'projects'
-                ? createProjectCard(item, true)
-                : createToolCard(item, true);
-            track.insertAdjacentHTML('beforeend', cloneHtml);
-        });
-    }
-
-    // Prepend clones to the left
-    for (let set = 0; set < setsNeeded; set++) {
-        for (let j = dataArray.length - 1; j >= 0; j--) {
-            const item = dataArray[j];
-            const cloneHtml = dataType === 'projects'
-                ? createProjectCard(item, true)
-                : createToolCard(item, true);
-            track.insertAdjacentHTML('afterbegin', cloneHtml);
-        }
-    }
-
-    // Set initial scroll position
-    const initialPosition = singleSetWidth * setsNeeded;
-    scrollContainer.scrollLeft = initialPosition;
-
-    // Initialize fluid effects on clones
-    if (typeof initFluidEffects === 'function') {
-        initFluidEffects();
-    }
-
-    // Store scroll data
-    const scrollData = {
-        singleSetWidth,
-        initialPosition,
-        setsNeeded,
-        isAdjusting: false
-    };
-
-    // Scroll handler - different strategies for desktop vs mobile
-    const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-
-    if (isMobile) {
-        // Mobile: RAF-based correction WITHOUT blocking flag
-        // The blocking flag (isAdjusting) was causing issues with Safari momentum
-        let ticking = false;
-
-        scrollContainer.addEventListener('scroll', function () {
-            if (!ticking) {
-                requestAnimationFrame(() => {
-                    // Use mobile-specific correction (no blocking flag)
-                    correctScrollPosition(scrollContainer, scrollData);
-                    ticking = false;
-                });
-                ticking = true;
-            }
-        }, { passive: true });
-
-    } else {
-        // Desktop: Use immediate RAF-based correction with blocking flag
-        let ticking = false;
-        scrollContainer.addEventListener('scroll', function () {
-            if (!ticking) {
-                requestAnimationFrame(() => {
-                    handleSeamlessScroll(scrollContainer, scrollData);
-                    ticking = false;
-                });
-                ticking = true;
-            }
-        }, { passive: true });
-    }
-}
-
-// Correction function for mobile - no blocking flag
-// Uses while-loop to handle cases where momentum exceeds bounds by multiple widths
-function correctScrollPosition(container, data) {
-    let scrollLeft = container.scrollLeft;
-    const minBound = data.singleSetWidth;
-    const maxBound = data.initialPosition + data.singleSetWidth;
-    let corrected = false;
-
-    // While loop handles extreme momentum that jumps multiple widths
-    while (scrollLeft < minBound) {
-        scrollLeft += data.singleSetWidth;
-        corrected = true;
-    }
-    while (scrollLeft > maxBound) {
-        scrollLeft -= data.singleSetWidth;
-        corrected = true;
-    }
-
-    if (corrected) {
-        container.scrollLeft = scrollLeft;
-    }
-}
-
-function handleSeamlessScroll(container, data) {
-    if (data.isAdjusting) return;
-
-    const scrollLeft = container.scrollLeft;
-    const minBound = data.singleSetWidth;
-    const maxBound = data.initialPosition + data.singleSetWidth;
-
-    if (scrollLeft < minBound) {
-        data.isAdjusting = true;
-        container.scrollLeft = scrollLeft + data.singleSetWidth;
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                data.isAdjusting = false;
-            });
-        });
-    } else if (scrollLeft > maxBound) {
-        data.isAdjusting = true;
-        container.scrollLeft = scrollLeft - data.singleSetWidth;
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                data.isAdjusting = false;
-            });
-        });
-    }
-}
 
 // ========== WHEEL SCROLL ==========
 function setupWheelScroll() {

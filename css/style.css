@@ -292,12 +292,11 @@ ol {
     /* Firefox */
     -ms-overflow-style: none;
     /* IE/Edge */
-    padding: 0;
+    padding: 0 var(--spacing-xl);
     padding-bottom: var(--spacing-md);
-    /* Performance: GPU acceleration for smooth scrolling */
+    /* GPU layer for smooth scrolling */
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
-    will-change: scroll-position;
 }
 
 .gallery-scroll::-webkit-scrollbar {
@@ -305,13 +304,14 @@ ol {
     /* Chrome/Safari */
 }
 
-/* Inner track for infinite loop */
+/* Inner track - no longer used for infinite loop */
 .gallery-track {
     display: flex;
     gap: var(--spacing-md);
     align-items: flex-start;
     /* Align cards to top */
 }
+
 
 
 .project-card {

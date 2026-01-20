@@ -31,6 +31,26 @@ const liquidInstances = [];
 let activeWebGLContexts = 0;
 const MAX_WEBGL_CONTEXTS = 8; // Safe limit for most browsers
 
+// --- SINGLETON INTERSECTION OBSERVER ---
+// One observer for all LiquidItem instances (performance optimization)
+const visibilityObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        const liquidItem = entry.target._liquidItem;
+        if (!liquidItem) return;
+
+        liquidItem.isVisible = entry.isIntersecting;
+        if (entry.isIntersecting) {
+            liquidItem.wakeUp();
+        } else {
+            liquidItem.video.pause();
+            if (liquidItem.rafId) {
+                cancelAnimationFrame(liquidItem.rafId);
+                liquidItem.rafId = null;
+            }
+        }
+    });
+}, { threshold: 0.01, rootMargin: '50px' });
+
 // --- SHADERS GLSL ---
 // Use highp precision for Safari compatibility
 const VERTEX_SHADER_SOURCE = `
@@ -104,6 +124,7 @@ class LiquidItem {
         this.isHovering = false;
         this.isVideoReady = false;
         this.rafId = null;
+        this._boundLoop = this.loop.bind(this);  // Pre-bind to avoid closure per frame
 
         // Mouse
         this.mx = -10000;
@@ -186,7 +207,7 @@ class LiquidItem {
         this.video.muted = true;
         this.video.loop = true;
         this.video.playsInline = true;
-        this.video.preload = 'auto';
+        this.video.preload = 'none';
         this.video.setAttribute('muted', '');
         this.video.setAttribute('playsinline', '');
 
@@ -247,6 +268,8 @@ class LiquidItem {
         const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE);
 
         if (!vertexShader || !fragmentShader) {
+            // FIX: Decrement counter since WebGL init failed
+            activeWebGLContexts--;
             this.useWebGL = false;
             this.ctx = this.canvas.getContext('2d');
             return;
@@ -254,6 +277,8 @@ class LiquidItem {
 
         this.program = createProgram(gl, vertexShader, fragmentShader);
         if (!this.program) {
+            // FIX: Decrement counter since WebGL init failed
+            activeWebGLContexts--;
             this.useWebGL = false;
             this.ctx = this.canvas.getContext('2d');
             return;
@@ -329,6 +354,10 @@ class LiquidItem {
         // UV arrays (normalized 0-1)
         this.u = new Float32Array(this.count);
         this.v = new Float32Array(this.count);
+
+        // Pre-allocated buffers for WebGL draw (avoid GC stress)
+        this.positionsBuffer = new Float32Array(this.count * 2);
+        this.uvsBuffer = new Float32Array(this.count * 2);
 
         // Pre-compute spacing
         this.spacingX = this.width / (cols - 1);
@@ -466,21 +495,10 @@ class LiquidItem {
     }
 
     initObserver() {
-        const obs = new IntersectionObserver(entries => {
-            entries.forEach(e => {
-                this.isVisible = e.isIntersecting;
-                if (e.isIntersecting) {
-                    this.wakeUp();
-                } else {
-                    this.video.pause();
-                    if (this.rafId) {
-                        cancelAnimationFrame(this.rafId);
-                        this.rafId = null;
-                    }
-                }
-            });
-        }, { threshold: 0.01, rootMargin: '50px' });
-        obs.observe(this.canvas);
+        // Store reference to this LiquidItem on the canvas element
+        this.canvas._liquidItem = this;
+        // Register with the singleton observer
+        visibilityObserver.observe(this.canvas);
     }
 
     wakeUp() {
@@ -602,27 +620,25 @@ class LiquidItem {
         // Set resolution
         gl.uniform2f(this.resolutionLocation, this.width, this.height);
 
-        // Build position buffer from current mesh state
-        const positions = new Float32Array(this.count * 2);
+        // Build position buffer from current mesh state (reuse pre-allocated buffer)
         for (let i = 0; i < this.count; i++) {
-            positions[i * 2] = this.x[i];
-            positions[i * 2 + 1] = this.y[i];
+            this.positionsBuffer[i * 2] = this.x[i];
+            this.positionsBuffer[i * 2 + 1] = this.y[i];
         }
 
         // Upload positions
         gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.DYNAMIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, this.positionsBuffer, gl.DYNAMIC_DRAW);
         gl.enableVertexAttribArray(this.positionLocation);
         gl.vertexAttribPointer(this.positionLocation, 2, gl.FLOAT, false, 0, 0);
 
-        // Upload UVs
-        const uvs = new Float32Array(this.count * 2);
+        // Upload UVs (reuse pre-allocated buffer)
         for (let i = 0; i < this.count; i++) {
-            uvs[i * 2] = this.u[i];
-            uvs[i * 2 + 1] = this.v[i];
+            this.uvsBuffer[i * 2] = this.u[i];
+            this.uvsBuffer[i * 2 + 1] = this.v[i];
         }
         gl.bindBuffer(gl.ARRAY_BUFFER, this.texCoordBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, this.uvsBuffer, gl.STATIC_DRAW);
         gl.enableVertexAttribArray(this.texCoordLocation);
         gl.vertexAttribPointer(this.texCoordLocation, 2, gl.FLOAT, false, 0, 0);
 
@@ -669,13 +685,19 @@ class LiquidItem {
 
         this.update();
         this.draw();
-        this.rafId = requestAnimationFrame(() => this.loop());
+        this.rafId = requestAnimationFrame(this._boundLoop);
     }
 
     destroy() {
         if (this.rafId) {
             cancelAnimationFrame(this.rafId);
             this.rafId = null;
+        }
+
+        // Unregister from singleton observer
+        if (this.canvas) {
+            visibilityObserver.unobserve(this.canvas);
+            this.canvas._liquidItem = null;
         }
 
         // Cleanup WebGL resources
