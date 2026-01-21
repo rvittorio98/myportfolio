@@ -70,10 +70,14 @@ const VERTEX_SHADER_SOURCE = `
 const FRAGMENT_SHADER_SOURCE = `
     precision highp float;
     uniform sampler2D u_texture;
+    uniform float u_gamma;  // Gamma correction factor (1.0 = no correction, <1.0 = darken, >1.0 = lighten)
     varying vec2 v_texCoord;
 
     void main() {
-        gl_FragColor = texture2D(u_texture, v_texCoord);
+        vec4 color = texture2D(u_texture, v_texCoord);
+        // Apply gamma correction to RGB channels only
+        color.rgb = pow(color.rgb, vec3(u_gamma));
+        gl_FragColor = color;
     }
 `;
 
@@ -146,16 +150,26 @@ class LiquidItem {
         // Try WebGL, fallback to 2D if not available
         // CRITICAL: powerPreference 'high-performance' forces dedicated GPU on Safari/Firefox
         // desynchronized: true reduces input latency
-        this.gl = this.canvas.getContext('webgl', {
+        const contextOptions = {
             alpha: true,
-            premultipliedAlpha: false,
+            premultipliedAlpha: false,  // Non-premultiplied for accurate colors
             antialias: false,
             preserveDrawingBuffer: false,
             powerPreference: 'high-performance',  // Force dedicated GPU
             desynchronized: true,                  // Lower latency
             depth: false,                          // Not needed - 2D
             stencil: false                         // Not needed
-        });
+        };
+
+        this.gl = this.canvas.getContext('webgl', contextOptions);
+
+        // Force sRGB color space for consistent colors across browsers
+        if (this.gl && this.gl.drawingBufferColorSpace !== undefined) {
+            this.gl.drawingBufferColorSpace = 'srgb';
+        }
+        if (this.gl && this.gl.unpackColorSpace !== undefined) {
+            this.gl.unpackColorSpace = 'srgb';
+        }
 
         if (!this.gl) {
             console.warn('WebGL not available, falling back to 2D');
@@ -200,10 +214,10 @@ class LiquidItem {
 
         // Media
         this.img = new Image();
-        this.img.crossOrigin = "Anonymous";
+        // Only set crossOrigin for HTTP/HTTPS URLs to avoid CORS issues on Windows Chrome/ANGLE
+        // Local and relative paths should NOT have crossOrigin set
 
         this.video = document.createElement('video');
-        this.video.crossOrigin = "Anonymous";
         this.video.muted = true;
         this.video.loop = true;
         this.video.playsInline = true;
@@ -234,11 +248,27 @@ class LiquidItem {
         };
 
         if (imgSrc) {
+            // Conditional crossOrigin - only for HTTP/HTTPS URLs
+            // Windows Chrome/ANGLE has strict CORS that can fail with local paths + crossOrigin
+            if (imgSrc.startsWith('http://') || imgSrc.startsWith('https://')) {
+                this.img.crossOrigin = "Anonymous";
+            }
             this.img.onload = onImageReady;
+            this.img.onerror = (e) => {
+                console.error('[Image] Failed to load:', imgSrc, e);
+            };
             this.img.src = imgSrc;
             if (this.img.complete && this.img.naturalWidth > 0) {
                 onImageReady();
             }
+        }
+
+        // Conditional crossOrigin for video too
+        if (videoSrc) {
+            if (videoSrc.startsWith('http://') || videoSrc.startsWith('https://')) {
+                this.video.crossOrigin = "Anonymous";
+            }
+            this.video.src = videoSrc;
         }
 
         this.video.addEventListener('canplaythrough', () => {
@@ -255,7 +285,6 @@ class LiquidItem {
             }
         });
 
-        if (videoSrc) this.video.src = videoSrc;
 
         this.initObserver();
     }
@@ -289,15 +318,15 @@ class LiquidItem {
         this.texCoordLocation = gl.getAttribLocation(this.program, 'a_texCoord');
         this.resolutionLocation = gl.getUniformLocation(this.program, 'u_resolution');
         this.textureLocation = gl.getUniformLocation(this.program, 'u_texture');
+        this.gammaLocation = gl.getUniformLocation(this.program, 'u_gamma');
 
         // Create buffers
         this.positionBuffer = gl.createBuffer();
         this.texCoordBuffer = gl.createBuffer();
         this.indexBuffer = gl.createBuffer();
 
-        // Enable blending for transparency
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        // NOTE: Blending is controlled dynamically in drawWebGL()
+        // to fix Safari color issues with opaque images
 
         // Set viewport
         gl.viewport(0, 0, this.width, this.height);
@@ -320,8 +349,24 @@ class LiquidItem {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
-        // Upload texture
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+        // Upload texture with error checking (critical for Windows Chrome/ANGLE)
+        try {
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+
+            // Check for GL errors (ANGLE is strict)
+            const error = gl.getError();
+            if (error !== gl.NO_ERROR) {
+                console.error('[WebGL] texImage2D error:', error, 'for', type, {
+                    sourceType: source.constructor.name,
+                    complete: source.complete,
+                    naturalWidth: source.naturalWidth,
+                    naturalHeight: source.naturalHeight,
+                    crossOrigin: source.crossOrigin
+                });
+            }
+        } catch (e) {
+            console.error('[WebGL] texImage2D exception:', e.message, 'for', type);
+        }
 
         if (type === 'image') {
             this.imageTexture = texture;
@@ -610,8 +655,11 @@ class LiquidItem {
             return;
         }
 
-        // Clear
+        // Clear with transparent background
         gl.clearColor(0, 0, 0, 0);
+        gl.disable(gl.BLEND);  // Disable blending - gamma correction handles color accuracy
+
+        // Clear
         gl.clear(gl.COLOR_BUFFER_BIT);
 
         // Use program
@@ -619,6 +667,11 @@ class LiquidItem {
 
         // Set resolution
         gl.uniform2f(this.resolutionLocation, this.width, this.height);
+
+        // Set gamma correction - Safari needs darker gamma to compensate for washed-out colors
+        // Higher value = darker colors (pow raises to higher power)
+        const gammaValue = isSafari ? 1.17 : 1.0;
+        gl.uniform1f(this.gammaLocation, gammaValue);
 
         // Build position buffer from current mesh state (reuse pre-allocated buffer)
         for (let i = 0; i < this.count; i++) {
