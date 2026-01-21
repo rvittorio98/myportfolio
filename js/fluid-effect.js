@@ -70,13 +70,14 @@ const VERTEX_SHADER_SOURCE = `
 const FRAGMENT_SHADER_SOURCE = `
     precision highp float;
     uniform sampler2D u_texture;
-    uniform float u_gamma;  // Gamma correction factor (1.0 = no correction, <1.0 = darken, >1.0 = lighten)
+    uniform float u_gamma;  // Gamma correction factor (1.0 = no correction)
     varying vec2 v_texCoord;
 
     void main() {
         vec4 color = texture2D(u_texture, v_texCoord);
-        // Apply gamma correction to RGB channels only
-        color.rgb = pow(color.rgb, vec3(u_gamma));
+        // Safe gamma - if not set or invalid, use 1.0 (no correction)
+        float safeGamma = u_gamma > 0.0 ? u_gamma : 1.0;
+        color.rgb = pow(color.rgb, vec3(safeGamma));
         gl_FragColor = color;
     }
 `;
