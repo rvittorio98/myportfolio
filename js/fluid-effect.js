@@ -149,27 +149,32 @@ class LiquidItem {
         this.container.appendChild(this.canvas);
 
         // Try WebGL, fallback to 2D if not available
-        // CRITICAL: powerPreference 'high-performance' forces dedicated GPU on Safari/Firefox
-        // desynchronized: true reduces input latency
+        // Windows Chrome uses ANGLE (WebGL → Direct3D) which is more sensitive
+        const isWindows = navigator.platform.indexOf('Win') > -1;
+        const isWindowsChrome = isWindows && /Chrome/.test(navigator.userAgent) && !/Edge/.test(navigator.userAgent);
+
         const contextOptions = {
             alpha: true,
-            premultipliedAlpha: false,  // Non-premultiplied for accurate colors
+            // Windows Chrome/ANGLE needs premultipliedAlpha: true for proper rendering
+            premultipliedAlpha: isWindowsChrome ? true : false,
             antialias: false,
             preserveDrawingBuffer: false,
-            powerPreference: 'high-performance',  // Force dedicated GPU
-            desynchronized: true,                  // Lower latency
-            depth: false,                          // Not needed - 2D
-            stencil: false                         // Not needed
+            // Windows without dedicated GPU may fail with 'high-performance'
+            powerPreference: isWindowsChrome ? 'default' : 'high-performance',
+            // desynchronized can cause black canvas on ANGLE
+            desynchronized: isWindowsChrome ? false : true,
+            depth: false,
+            stencil: false
         };
 
         this.gl = this.canvas.getContext('webgl', contextOptions);
 
-        // Force sRGB color space for consistent colors across browsers
+        // Force sRGB color space for consistent colors across browsers (if supported)
         if (this.gl && this.gl.drawingBufferColorSpace !== undefined) {
-            this.gl.drawingBufferColorSpace = 'srgb';
+            try { this.gl.drawingBufferColorSpace = 'srgb'; } catch (e) { }
         }
         if (this.gl && this.gl.unpackColorSpace !== undefined) {
-            this.gl.unpackColorSpace = 'srgb';
+            try { this.gl.unpackColorSpace = 'srgb'; } catch (e) { }
         }
 
         if (!this.gl) {
