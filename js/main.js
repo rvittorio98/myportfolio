@@ -276,7 +276,7 @@ function renderTools() {
     if (!container) return;
 
     let html = '';
-    USER_TOOLS.forEach((tool) => {
+    USER_TOOLS.filter(tool => !tool.hidden).forEach((tool) => {
         html += createToolCard(tool);
     });
     container.innerHTML = html;

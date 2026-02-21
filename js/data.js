@@ -60,6 +60,7 @@ const SOFTWARE = {
 const USER_TOOLS = [
     {
         id: "maiella-tool",
+        hidden: true,
         title: "MAIELLA TOOL",
         description: "Interactive tool for Maiella brand — create custom PNG exports of your mountain with real-time 3D controls",
         thumbnail: "",
@@ -68,6 +69,7 @@ const USER_TOOLS = [
     },
     {
         id: "multiverse-studio",
+        hidden: true,
         title: "MULTIVERSE STUDIO",
         description: "Generative visual tool built for Multiverse — experiment with dynamic layouts and export custom compositions",
         thumbnail: "",
